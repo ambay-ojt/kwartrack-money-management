@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, PiggyBank, Target, AlertCircle } from 'lucide-react';
 import { Transaction } from '../types';
 import { format, differenceInDays, isPast, isToday } from 'date-fns';
-import { useFirestore } from '../hooks/useFirestore';
+import { useSupabase } from '../hooks/useSupabase';
 
 export default function Savings() {
-  const { transactions, settings, addTransaction, deleteTransaction, saveSetting } = useFirestore();
+  const { transactions, settings, addTransaction, deleteTransaction, saveSetting } = useSupabase();
   const savings = transactions.filter(tx => tx.type === 'savings');
   const totalSavings = savings.reduce((acc, curr) => acc + curr.amount, 0);
-  
+
   const [showAdd, setShowAdd] = useState(false);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -24,7 +24,7 @@ export default function Savings() {
   useEffect(() => {
     const gAmount = settings.find((s: any) => s.key === 'savings_goal_amount');
     const gDeadline = settings.find((s: any) => s.key === 'savings_goal_deadline');
-    
+
     if (gAmount && gAmount.value) {
       setSavedGoalAmount(parseFloat(gAmount.value));
       setGoalAmount(gAmount.value);
@@ -68,7 +68,7 @@ export default function Savings() {
 
   const renderGoalAlert = () => {
     if (!savedGoalAmount || !savedGoalDeadline) return null;
-    
+
     const deadlineDate = new Date(savedGoalDeadline);
     const daysLeft = differenceInDays(deadlineDate, new Date());
     const isMissed = isPast(deadlineDate) && !isToday(deadlineDate);
@@ -178,7 +178,7 @@ export default function Savings() {
           </div>
           <PiggyBank className="w-24 h-24 text-white/5" />
         </div>
-        
+
         {savedGoalAmount > 0 && (
           <div className="relative z-10 mt-4">
             <div className="flex justify-between text-sm mb-2">
@@ -186,7 +186,7 @@ export default function Savings() {
               <span className="text-white font-medium">{goalProgress.toFixed(1)}%</span>
             </div>
             <div className="w-full bg-[#0D0D0F] rounded-full h-3 border border-white/5 overflow-hidden">
-              <div 
+              <div
                 className="bg-[#E5D3B3] h-3 rounded-full transition-all duration-500"
                 style={{ width: `${goalProgress}%` }}
               ></div>

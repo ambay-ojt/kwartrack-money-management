@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, CheckCircle2, CreditCard } from 'lucide-react';
 import { RecurringPayment, Transaction } from '../types';
 import { format } from 'date-fns';
-import { useFirestore } from '../hooks/useFirestore';
+import { useSupabase } from '../hooks/useSupabase';
 
 export default function Payments() {
-  const { recurringPayments, transactions, addRecurringPayment, deleteRecurringPayment, addTransaction } = useFirestore();
+  const { recurringPayments, transactions, addRecurringPayment, deleteRecurringPayment, addTransaction } = useSupabase();
   const paymentHistory = transactions.filter(tx => tx.type === 'payment');
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');

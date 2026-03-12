@@ -16,9 +16,17 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, displayName, loading } = useAuth();
-  
+
   if (loading) return null;
-  if (!user || !displayName) return <Navigate to="/login" replace />;
+
+  // If no name is set, always go to login
+  if (!displayName) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // If we have a name but no user (auth failed or pending), 
+  // we stay on the page but the components will handle null user (usually by showing loading or error)
+  // This prevents the redirect loop between / and /login
   return <>{children}</>;
 };
 

@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Transaction } from '../types';
 import { format } from 'date-fns';
-import { useFirestore } from '../hooks/useFirestore';
+import { useSupabase } from '../hooks/useSupabase';
 
 export default function Expenses() {
-  const { transactions, addTransaction, deleteTransaction } = useFirestore();
+  const { transactions, addTransaction, deleteTransaction } = useSupabase();
   const expenses = transactions.filter(tx => tx.type === 'expense');
   const [showAdd, setShowAdd] = useState(false);
   const [amount, setAmount] = useState('');

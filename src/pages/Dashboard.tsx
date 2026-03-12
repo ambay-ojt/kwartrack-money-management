@@ -5,11 +5,11 @@ import { format } from 'date-fns';
 import { clsx } from 'clsx';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useFirestore } from '../hooks/useFirestore';
+import { useSupabase } from '../hooks/useSupabase';
 
 export default function Dashboard() {
   const { user, displayName: localName } = useAuth();
-  const { balance, transactions, addTransaction } = useFirestore();
+  const { transactions, balance, addTransaction, deleteTransaction } = useSupabase();
   const recentTransactions = transactions.slice(0, 5);
   const [showAddBalance, setShowAddBalance] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -36,16 +36,16 @@ export default function Dashboard() {
   const getCategoryIcon = (tx: Transaction) => {
     if (tx.type === 'income') return <Briefcase className="w-5 h-5 text-[#E5D3B3]" />;
     if (tx.type === 'savings') return <PiggyBank className="w-5 h-5 text-emerald-400" />;
-    
+
     const desc = (tx.description || '').toLowerCase();
     const cat = (tx.category || '').toLowerCase();
-    
+
     if (desc.includes('amazon') || cat.includes('shopping')) return <ShoppingCart className="w-5 h-5 text-zinc-400" />;
     if (cat.includes('food')) return <Utensils className="w-5 h-5 text-zinc-400" />;
     if (cat.includes('transport')) return <Car className="w-5 h-5 text-zinc-400" />;
     if (cat.includes('utilities') || desc.includes('electric')) return <Zap className="w-5 h-5 text-zinc-400" />;
     if (cat.includes('entertainment')) return <Film className="w-5 h-5 text-zinc-400" />;
-    
+
     return <Wallet className="w-5 h-5 text-zinc-400" />;
   };
 
@@ -60,8 +60,8 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8 pb-8">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      {/* Header (Desktop Only) */}
+      <div className="hidden md:flex justify-between items-center mb-6">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-full bg-zinc-800 overflow-hidden border border-white/10">
             <img src={user?.photoURL || "https://picsum.photos/seed/avatar/100/100"} alt="User Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -73,14 +73,14 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
-            <button 
+            <button
               onClick={() => setShowNotifications(!showNotifications)}
               className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition-colors relative"
             >
               <Bell size={18} />
               <span className="absolute top-2 right-2 w-2 h-2 bg-[#E5D3B3] rounded-full"></span>
             </button>
-            
+
             {/* Notifications Dropdown */}
             {showNotifications && (
               <div className="absolute right-0 mt-2 w-72 bg-[#1A1C20] border border-white/10 rounded-2xl shadow-xl z-50 overflow-hidden">
@@ -151,16 +151,16 @@ export default function Dashboard() {
         <p className="text-[#E5D3B3] text-sm font-medium mt-3 relative z-10">
           Allowance for the week: ₱{balance.totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </p>
-        
+
         <div className="flex gap-4 mt-8 w-full max-w-md relative z-10">
-          <button 
+          <button
             onClick={() => setShowAddBalance(true)}
             className="flex-1 bg-transparent border border-white/10 text-white py-4 rounded-full font-medium flex items-center justify-center gap-2 hover:bg-white/5 transition-colors"
           >
             <Plus size={18} />
             Add Money
           </button>
-          <Link 
+          <Link
             to="/expenses"
             className="flex-1 bg-[#E5D3B3] text-[#1A1C20] py-4 rounded-full font-medium flex items-center justify-center gap-2 hover:bg-[#d4c3a3] transition-colors"
           >
