@@ -1,0 +1,5 @@
+{
+  "name": "KwarTrack",
+  "description": "A full-stack personal finance app with expense tracking, savings goals, recurring payments, and n8n automation for budget alerts.",
+  "requestFramePermissions": []
+}
