@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { Transaction, Balance, RecurringPayment } from '../types';
-import { startOfWeek, format } from 'date-fns';
+import { Transaction, Balance, RecurringPayment, KwarNotification } from '../types';
+import { useIndexedDB, OfflineExpense } from './useIndexedDB';
+import { format } from 'date-fns';
+
+const N8N_WEBHOOK_URL = import.meta.env.VITE_N8N_WEBHOOK_URL;
 
 export function useSupabase() {
     const { user } = useAuth();
@@ -11,10 +14,13 @@ export function useSupabase() {
     const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
     const [settings, setSettings] = useState<any[]>([]);
     const [balance, setBalance] = useState<Balance | null>(null);
+    const [notifications, setNotifications] = useState<KwarNotification[]>([]);
 
     const settingsRef = useRef<any[]>([]);
     const budgetsRef = useRef<any[]>([]);
     const balanceRef = useRef<Balance | null>(null);
+    const notificationsRef = useRef<KwarNotification[]>([]);
+    const idb = useIndexedDB();
 
     useEffect(() => {
         settingsRef.current = settings;
@@ -27,6 +33,55 @@ export function useSupabase() {
     useEffect(() => {
         balanceRef.current = balance;
     }, [balance]);
+
+    useEffect(() => {
+        notificationsRef.current = notifications;
+    }, [notifications]);
+
+    const loadNotifications = () => {
+        if (!user) return;
+        const stored = localStorage.getItem(`notifications_${user.id}`);
+        if (stored) {
+            try { setNotifications(JSON.parse(stored)); } catch (_) {}
+        }
+    };
+
+    const addNotificationFn = (type: KwarNotification['type'], message: string) => {
+        if (!user) return;
+        const newNotification: KwarNotification = {
+            id: Math.random().toString(36).substr(2, 9),
+            type,
+            message,
+            date: new Date().toISOString(),
+            read: false
+        };
+        const updated = [newNotification, ...notificationsRef.current];
+        setNotifications(updated);
+        localStorage.setItem(`notifications_${user.id}`, JSON.stringify(updated));
+    };
+
+    const markAsRead = (id: string) => {
+        if (!user) return;
+        const updated = notifications.map(n => n.id === id ? { ...n, read: true } : n);
+        setNotifications(updated);
+        localStorage.setItem(`notifications_${user.id}`, JSON.stringify(updated));
+    };
+
+    const triggerBudgetWebhook = (alertLevel: string, message: string, newWeeklyExpense: number, budgetAmount: number, percentage: number) => {
+        if (!N8N_WEBHOOK_URL) return;
+        fetch(N8N_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'budget_alert',
+                alert_level: alertLevel,
+                message,
+                current_spend: newWeeklyExpense,
+                budget_limit: budgetAmount,
+                percentage: percentage.toFixed(1)
+            })
+        }).catch(err => console.error(`Failed to trigger ${alertLevel} webhook:`, err));
+    };
 
     const calculateBalance = (txs: Transaction[]) => {
         const totalIncome = txs.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
@@ -57,13 +112,12 @@ export function useSupabase() {
         };
         setBalance(newBalance);
 
-        // Check savings reminder
-        const webhookSetting = settingsRef.current.find(s => s.key === 'n8n_webhook_url');
-        if (webhookSetting?.value && weeklySavings === 0 && now.getDay() === 5) {
+        // Check savings reminder (Fridays only)
+        if (N8N_WEBHOOK_URL && weeklySavings === 0 && now.getDay() === 5) {
             const lastChecked = localStorage.getItem('savings_reminder_checked');
             const today = format(now, 'yyyy-MM-dd');
             if (lastChecked !== today) {
-                fetch(webhookSetting.value, {
+                fetch(N8N_WEBHOOK_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -71,8 +125,32 @@ export function useSupabase() {
                         message: "You haven't allotted money for savings this week."
                     })
                 }).catch(err => console.error('Failed to trigger webhook:', err));
+                addNotificationFn('warning', "You haven't allotted money for savings this week.");
                 localStorage.setItem('savings_reminder_checked', today);
             }
+        }
+    };
+
+    const syncOfflineExpenses = async () => {
+        if (!user || !navigator.onLine) return;
+        try {
+            const unsynced = await idb.getUnsyncedExpenses();
+            for (const expense of unsynced) {
+                const { id, synced, ...rest } = expense;
+                const { error } = await supabase.from('transactions').insert([{
+                    ...rest,
+                    user_id: user.id
+                }]);
+                if (!error) {
+                    await idb.markSynced(id);
+                }
+            }
+            if (unsynced.length > 0) {
+                addNotificationFn('success', `${unsynced.length} offline expense(s) synced successfully.`);
+                fetchData();
+            }
+        } catch (err) {
+            console.error('Failed to sync offline expenses:', err);
         }
     };
 
@@ -98,6 +176,7 @@ export function useSupabase() {
         if (bdgs) setBudgets(bdgs);
         if (pays) setRecurringPayments(pays);
         if (sets) setSettings(sets);
+        loadNotifications();
     };
 
     useEffect(() => {
@@ -112,60 +191,88 @@ export function useSupabase() {
             })
             .subscribe();
 
+        // Sync offline expenses when back online
+        const handleOnline = () => syncOfflineExpenses();
+        window.addEventListener('online', handleOnline);
+
         return () => {
             supabase.removeChannel(channel);
+            window.removeEventListener('online', handleOnline);
         };
     }, [user]);
 
     const addTransaction = async (tx: Omit<Transaction, 'id'>) => {
         if (!user) return;
+
+        const offlineExpense: OfflineExpense = {
+            id: `offline_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            description: tx.description,
+            amount: tx.amount,
+            category: tx.category,
+            type: tx.type,
+            date: tx.date,
+            synced: navigator.onLine
+        };
+
+        // Always save to IndexedDB for offline resilience
+        await idb.addOfflineExpense(offlineExpense);
+
+        if (!navigator.onLine) {
+            // Offline — update UI immediately from local data
+            const fakeTx: Transaction = { ...tx, id: offlineExpense.id };
+            setTransactions(prev => [fakeTx, ...prev]);
+            calculateBalance([fakeTx, ...transactions]);
+            addNotificationFn('info', 'Expense saved offline. It will sync when you reconnect.');
+            return;
+        }
+
+        // Online — insert to Supabase
         const { error } = await supabase.from('transactions').insert([{ ...tx, user_id: user.id }]);
         if (error) {
             console.error('Error adding transaction:', error);
             throw error;
         }
 
-        // Webhook logic
+        // Budget alert logic for expenses
         if (tx.type === 'expense') {
-            const webhookSetting = settingsRef.current.find(s => s.key === 'n8n_webhook_url');
             const weeklyBudget = budgetsRef.current.find(b => b.type === 'weekly');
 
-            if (webhookSetting?.value && weeklyBudget?.amount && balanceRef.current) {
+            if (weeklyBudget?.amount && balanceRef.current) {
                 const newWeeklyExpense = balanceRef.current.weeklyExpense + tx.amount;
                 const percentage = (newWeeklyExpense / weeklyBudget.amount) * 100;
 
-                if (percentage >= 85) {
-                    fetch(webhookSetting.value, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: 'budget_alert',
-                            message: `Warning: You have spent ${percentage.toFixed(1)}% of your weekly budget.`,
-                            current_spend: newWeeklyExpense,
-                            budget_limit: weeklyBudget.amount
-                        })
-                    }).catch(err => console.error('Failed to trigger webhook:', err));
+                let alertLevel: 'warning' | 'risk' | 'exceeded' | '' = '';
+                if (percentage >= 100) {
+                    alertLevel = 'exceeded';
+                } else if (percentage >= 90) {
+                    alertLevel = 'risk';
+                } else if (percentage >= 75) {
+                    alertLevel = 'warning';
+                }
+
+                if (alertLevel) {
+                    const message = `${alertLevel.toUpperCase()}: You have spent ${percentage.toFixed(1)}% of your weekly budget.`;
+                    triggerBudgetWebhook(alertLevel, message, newWeeklyExpense, weeklyBudget.amount, percentage);
+                    addNotificationFn(alertLevel, message);
                 }
             }
         } else if (tx.type === 'savings') {
-            const webhookSetting = settingsRef.current.find(s => s.key === 'n8n_webhook_url');
             const goalAmount = settingsRef.current.find(s => s.key === 'savings_goal_amount');
 
-            if (webhookSetting?.value && goalAmount?.value && balanceRef.current) {
+            if (goalAmount?.value && balanceRef.current) {
                 const newTotalSavings = balanceRef.current.totalSavings + tx.amount;
                 const target = parseFloat(goalAmount.value);
 
                 if (newTotalSavings >= target) {
-                    fetch(webhookSetting.value, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: 'savings_goal_reached',
-                            message: `Congratulations! You have reached your savings goal of ₱${target}.`,
-                            current_savings: newTotalSavings,
-                            goal_amount: target
-                        })
-                    }).catch(err => console.error('Failed to trigger webhook:', err));
+                    const msg = `Congratulations! You have reached your savings goal of \u20B1${target}.`;
+                    if (N8N_WEBHOOK_URL) {
+                        fetch(N8N_WEBHOOK_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ type: 'savings_goal_reached', message: msg, current_savings: newTotalSavings, goal_amount: target })
+                        }).catch(err => console.error('Failed to trigger webhook:', err));
+                    }
+                    addNotificationFn('success', msg);
                 }
             }
         }
@@ -214,6 +321,8 @@ export function useSupabase() {
 
     const saveBudget = async (type: string, amount: number) => {
         if (!user) return;
+        // Persist to localStorage for fast loading
+        localStorage.setItem(`kwartrack_budget_${type}`, String(amount));
         const { error } = await supabase.from('budgets').upsert([{
             id: `${user.id}_${type}`,
             type,
@@ -232,11 +341,14 @@ export function useSupabase() {
         budgets,
         recurringPayments,
         settings,
+        notifications,
         addTransaction,
         deleteTransaction,
         addRecurringPayment,
         deleteRecurringPayment,
         saveSetting,
-        saveBudget
+        saveBudget,
+        markAsRead,
+        syncOfflineExpenses
     };
 }

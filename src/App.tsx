@@ -13,6 +13,7 @@ import Payments from './pages/Payments';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { OfflineProvider } from './contexts/OfflineContext';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, displayName, loading } = useAuth();
@@ -32,23 +33,25 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/" element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }>
-            <Route index element={<Dashboard />} />
-            <Route path="expenses" element={<Expenses />} />
-            <Route path="savings" element={<Savings />} />
-            <Route path="payments" element={<Payments />} />
-            <Route path="settings" element={<Settings />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+    <OfflineProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }>
+              <Route index element={<Dashboard />} />
+              <Route path="expenses" element={<Expenses />} />
+              <Route path="savings" element={<Savings />} />
+              <Route path="payments" element={<Payments />} />
+              <Route path="settings" element={<Settings />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </OfflineProvider>
   );
 }

@@ -56,6 +56,19 @@ export default function Dashboard() {
     return 'Good Evening';
   };
 
+  const { notifications, markAsRead } = useSupabase();
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'warning': return <div className="w-2 h-2 mt-1.5 rounded-full bg-orange-400 shrink-0"></div>;
+      case 'risk': return <div className="w-2 h-2 mt-1.5 rounded-full bg-red-400 shrink-0"></div>;
+      case 'exceeded': return <div className="w-2 h-2 mt-1.5 rounded-full bg-red-600 shrink-0"></div>;
+      case 'success': return <div className="w-2 h-2 mt-1.5 rounded-full bg-emerald-400 shrink-0"></div>;
+      default: return <div className="w-2 h-2 mt-1.5 rounded-full bg-[#E5D3B3] shrink-0"></div>;
+    }
+  };
+
   if (!balance) return <div className="p-8 text-zinc-500 flex justify-center items-center min-h-[50vh]">Loading...</div>;
 
   return (
@@ -78,24 +91,39 @@ export default function Dashboard() {
               className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition-colors relative"
             >
               <Bell size={18} />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-[#E5D3B3] rounded-full"></span>
+              {unreadCount > 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-[#E5D3B3] rounded-full"></span>}
             </button>
 
             {/* Notifications Dropdown */}
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-72 bg-[#1A1C20] border border-white/10 rounded-2xl shadow-xl z-50 overflow-hidden">
-                <div className="p-4 border-b border-white/5">
+              <div className="absolute right-0 mt-2 w-80 bg-[#1A1C20] border border-white/10 rounded-2xl shadow-xl z-50 overflow-hidden">
+                <div className="p-4 border-b border-white/5 flex justify-between items-center">
                   <h3 className="font-medium text-white">Notifications</h3>
+                  {unreadCount > 0 && <span className="text-xs text-[#E5D3B3] font-medium">{unreadCount} new</span>}
                 </div>
-                <div className="p-4 text-sm text-zinc-400 space-y-3">
-                  <div className="flex gap-3">
-                    <div className="w-2 h-2 mt-1.5 rounded-full bg-[#E5D3B3] shrink-0"></div>
-                    <p>Welcome to KwarTrack! Start tracking your expenses today.</p>
-                  </div>
-                  <div className="flex gap-3">
-                    <div className="w-2 h-2 mt-1.5 rounded-full bg-emerald-400 shrink-0"></div>
-                    <p>Your weekly allowance has been set to ₱{balance.totalIncome.toFixed(2)}.</p>
-                  </div>
+                <div className="max-h-96 overflow-y-auto p-4 text-sm text-zinc-400 space-y-4">
+                  {notifications.length === 0 ? (
+                    <div className="flex gap-3">
+                      <div className="w-2 h-2 mt-1.5 rounded-full bg-[#E5D3B3] shrink-0"></div>
+                      <p>Welcome to KwarTrack! Start tracking your expenses today.</p>
+                    </div>
+                  ) : (
+                    notifications.map(n => (
+                      <div key={n.id} className={clsx("flex gap-3", !n.read && "opacity-100")} onClick={() => markAsRead(n.id)}>
+                        {getNotificationIcon(n.type)}
+                        <div className="flex-1">
+                          <p className={clsx(!n.read && "text-white font-medium")}>{n.message}</p>
+                          <p className="text-[10px] text-zinc-500 mt-1">{format(new Date(n.date), 'MMM d, h:mm a')}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  {notifications.length > 0 && (
+                    <div className="flex gap-3 opacity-50">
+                      <div className="w-2 h-2 mt-1.5 rounded-full bg-[#E5D3B3] shrink-0"></div>
+                      <p>Welcome to KwarTrack! Start tracking your expenses today.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

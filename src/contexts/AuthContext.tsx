@@ -12,6 +12,8 @@ interface AuthContextType {
   authError: string | null;
 }
 
+const BYPASS_AUTH = false; // Set to true to disable authentication for UI editing
+
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,

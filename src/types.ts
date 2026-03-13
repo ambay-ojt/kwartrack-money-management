@@ -25,6 +25,14 @@ export interface Setting {
   value: string;
 }
 
+export interface KwarNotification {
+  id: string;
+  type: 'info' | 'warning' | 'risk' | 'exceeded' | 'success';
+  message: string;
+  date: string;
+  read: boolean;
+}
+
 export interface Balance {
   remaining: number;
   totalIncome: number;
